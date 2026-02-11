@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Request
+from fastapi.responses import PlainTextResponse
 import requests
 import os
 from app.services.logistics import get_tracking_details
@@ -17,27 +18,44 @@ async def verify_webhook(request: Request):
     token = request.query_params.get("hub.verify_token")
     challenge = request.query_params.get("hub.challenge")
 
-    if mode == "subscribe" and token == VERIFY_TOKEN:
-        return int(challenge)
+    print("Mode:", mode)
+    print("Token from request:", token)
+    print("Token from env:", VERIFY_TOKEN)
 
-    return {"error": "Verification failed"}
+    if mode == "subscribe" and token == VERIFY_TOKEN:
+        return PlainTextResponse(content=challenge, status_code=200)
+
+    return PlainTextResponse(content="Verification failed", status_code=403)
 
 
 # 🔹 Receive WhatsApp Messages
 @router.post("/webhook")
 async def receive_message(request: Request):
     data = await request.json()
+    print("Incoming POST:", data)
 
     try:
-        message = data["entry"][0]["changes"][0]["value"]["messages"][0]["text"]["body"]
-        sender = data["entry"][0]["changes"][0]["value"]["messages"][0]["from"]
+        if "entry" not in data:
+            return PlainTextResponse(content="No entry field", status_code=200)
+
+        value = data["entry"][0]["changes"][0]["value"]
+
+        if "messages" not in value:
+            return PlainTextResponse(content="No messages field", status_code=200)
+
+        message = value["messages"][0]["text"]["body"]
+        sender = value["messages"][0]["from"]
 
         if message.lower().startswith("track"):
-            tracking_id = message.split(" ")[1]
+            parts = message.split(" ")
 
-            tracking_data = get_tracking_details(tracking_id)
+            if len(parts) < 2:
+                reply_text = "Please send: track <TrackingID>"
+            else:
+                tracking_id = parts[1]
+                tracking_data = get_tracking_details(tracking_id)
 
-            reply_text = f"""
+                reply_text = f"""
 Tracking ID: {tracking_data['tracking_id']}
 Container: {tracking_data['container_number']}
 Status: {tracking_data['status']}
@@ -63,9 +81,10 @@ History:
             "text": {"body": reply_text.strip()}
         }
 
-        requests.post(url, headers=headers, json=payload)
+        response = requests.post(url, headers=headers, json=payload)
+        print("WhatsApp API Response:", response.text)
 
     except Exception as e:
         print("Error:", e)
 
-    return "ok"
+    return PlainTextResponse(content="ok", status_code=200)
