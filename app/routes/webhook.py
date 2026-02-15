@@ -6,7 +6,9 @@ from app.services.logistics import get_tracking_details
 
 router = APIRouter()
 
-VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
+# 🔥 Hardcode temporarily to avoid env mismatch
+VERIFY_TOKEN = "logistics_secure_2026"
+
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
@@ -18,13 +20,16 @@ async def verify_webhook(request: Request):
     token = request.query_params.get("hub.verify_token")
     challenge = request.query_params.get("hub.challenge")
 
+    print("---- WEBHOOK VERIFY ----")
     print("Mode:", mode)
     print("Token from request:", token)
-    print("Token from env:", VERIFY_TOKEN)
+    print("Expected token:", VERIFY_TOKEN)
 
     if mode == "subscribe" and token == VERIFY_TOKEN:
+        print("✅ Webhook verified successfully")
         return PlainTextResponse(content=challenge, status_code=200)
 
+    print("❌ Verification failed")
     return PlainTextResponse(content="Verification failed", status_code=403)
 
 
@@ -32,19 +37,34 @@ async def verify_webhook(request: Request):
 @router.post("/webhook")
 async def receive_message(request: Request):
     data = await request.json()
-    print("Incoming POST:", data)
+    print("---- INCOMING POST ----")
+    print(data)
 
     try:
-        if "entry" not in data:
+        entry = data.get("entry", [])
+        if not entry:
             return PlainTextResponse(content="No entry field", status_code=200)
 
-        value = data["entry"][0]["changes"][0]["value"]
+        changes = entry[0].get("changes", [])
+        if not changes:
+            return PlainTextResponse(content="No changes field", status_code=200)
 
-        if "messages" not in value:
+        value = changes[0].get("value", {})
+        messages = value.get("messages")
+
+        # If no actual message (like delivery/read events)
+        if not messages:
             return PlainTextResponse(content="No messages field", status_code=200)
 
-        message = value["messages"][0]["text"]["body"]
-        sender = value["messages"][0]["from"]
+        message_data = messages[0]
+        message = message_data.get("text", {}).get("body", "")
+        sender = message_data.get("from")
+
+        if not message or not sender:
+            return PlainTextResponse(content="Invalid message format", status_code=200)
+
+        print("Sender:", sender)
+        print("Message:", message)
 
         if message.lower().startswith("track"):
             parts = message.split(" ")
@@ -82,9 +102,11 @@ History:
         }
 
         response = requests.post(url, headers=headers, json=payload)
+
+        print("WhatsApp API Status:", response.status_code)
         print("WhatsApp API Response:", response.text)
 
     except Exception as e:
-        print("Error:", e)
+        print("🔥 Error occurred:", str(e))
 
     return PlainTextResponse(content="ok", status_code=200)
