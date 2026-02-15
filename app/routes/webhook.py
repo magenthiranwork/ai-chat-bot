@@ -13,24 +13,21 @@ ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
 
-# 🔹 Webhook Verification (Meta setup step)
 @router.get("/webhook")
 async def verify_webhook(request: Request):
     mode = request.query_params.get("hub.mode")
     token = request.query_params.get("hub.verify_token")
     challenge = request.query_params.get("hub.challenge")
 
-    print("---- WEBHOOK VERIFY ----")
     print("Mode:", mode)
     print("Token from request:", token)
     print("Expected token:", VERIFY_TOKEN)
 
     if mode == "subscribe" and token == VERIFY_TOKEN:
-        print("✅ Webhook verified successfully")
         return PlainTextResponse(content=challenge, status_code=200)
 
-    print("❌ Verification failed")
-    return PlainTextResponse(content="Verification failed", status_code=403)
+    # return OK for normal checks instead of 403
+    return PlainTextResponse(content="OK", status_code=200)
 
 
 # 🔹 Receive WhatsApp Messages
